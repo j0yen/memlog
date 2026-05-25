@@ -1,0 +1,20 @@
+config MEMLOG
+	tristate "memlog: /dev/memlog LLM context-compaction audit log"
+	default n
+	help
+	  Adds the /dev/memlog character device — a per-uid circular buffer
+	  in kernel memory for storing LLM "about-to-be-compacted" context
+	  snapshots so they survive process death. Records are opaque
+	  (CBOR-encoded by convention; the kernel only validates size).
+	  Ring capacity is tunable via sysctl kernel.memlog.ring_size.
+
+	  Writers must be in the "memlog" group (configured via the
+	  memlog_gid module parameter) or have CAP_SYS_ADMIN.
+
+	  Readers see only their own uid's records by default;
+	  CAP_SYS_ADMIN can request the full ring via ioctl.
+
+	  See Documentation/admin-guide/memlog.rst.
+
+	  If unsure, say N. To build as a module, say M; the module is
+	  named memlog.
