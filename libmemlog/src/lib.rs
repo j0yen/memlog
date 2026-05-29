@@ -12,6 +12,12 @@
 //! exactly. It compiles and its unit tests pass without the device present;
 //! anything that touches `/dev/memlog` returns an [`io::Result`] so callers
 //! degrade gracefully when not booted into `linux-wintermute`.
+//!
+//! New in v0.2: [`persistence`] (atomic per-session snapshot writer) and
+//! [`lock`] (single-instance file-lock guard) modules used by `memlog-witness`.
+
+pub mod lock;
+pub mod persistence;
 
 use std::fs::{File, OpenOptions};
 use std::io::{self, Read, Write};

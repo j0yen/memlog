@@ -1,6 +1,6 @@
 [package]
 name = "libmemlog"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 description = "Userspace Rust bindings for the /dev/memlog kernel char device (LLM context-compaction audit log)"
 license = "MIT OR Apache-2.0"
@@ -12,6 +12,17 @@ rust-version = "1.85"
 # v0.1 Python CLI (cli/) live alongside it and are built by their own tools.
 [lib]
 path = "libmemlog/src/lib.rs"
+
+[[bin]]
+name = "memlog-witness"
+path = "cli/memlog-witness/src/main.rs"
+
+[dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"
+hex = "0.4"
 
 [profile.release]
 strip = true
