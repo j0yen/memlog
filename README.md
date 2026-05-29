@@ -75,6 +75,10 @@ The driver is dropped into `drivers/char/memlog/` as part of the
 `linux-wintermute` package build. The UAPI header lands at
 `include/uapi/linux/memlog.h`. See `../wintermute-kernel/`.
 
+## Recent
+
+- **v0.2.0** (2026-05-29) — `memlog-witness` daemon added: long-running consumer that drains `/dev/memlog` into per-session snapshot files under `~/.claude/memlog/<session-id>/`. Includes atomic snap writes, quota trimming, `status` subcommand, `drain` subcommand, and single-instance flock guard. `libmemlog` gains `persistence.rs` and `lock.rs`.
+
 ## License
 
 GPL-2.0-only (kernel module); MIT-OR-Apache-2.0 (userspace CLI and bindings,
