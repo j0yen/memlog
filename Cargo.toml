@@ -1,0 +1,17 @@
+[package]
+name = "libmemlog"
+version = "0.1.0"
+edition = "2021"
+description = "Userspace Rust bindings for the /dev/memlog kernel char device (LLM context-compaction audit log)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/j0yen/memlog"
+readme = "README.md"
+rust-version = "1.85"
+
+# The repo root is the libmemlog crate; the kernel driver (driver/) and the
+# v0.1 Python CLI (cli/) live alongside it and are built by their own tools.
+[lib]
+path = "libmemlog/src/lib.rs"
+
+[profile.release]
+strip = true
