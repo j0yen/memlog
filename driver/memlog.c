@@ -431,7 +431,6 @@ static struct ctl_table memlog_sysctl_table[] = {
 		.extra1		= (void *)&memlog_capacity_min,
 		.extra2		= (void *)&memlog_capacity_max,
 	},
-	{}
 };
 
 static struct ctl_table_header *memlog_sysctl_hdr;
