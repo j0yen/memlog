@@ -1,6 +1,6 @@
 [package]
 name = "libmemlog"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 description = "Userspace Rust bindings for the /dev/memlog kernel char device (LLM context-compaction audit log)"
 license = "MIT OR Apache-2.0"

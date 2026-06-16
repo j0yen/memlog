@@ -17,6 +17,7 @@
 //! [`lock`] (single-instance file-lock guard) modules used by `memlog-witness`.
 
 pub mod lock;
+pub mod mode_contract;
 pub mod persistence;
 
 use std::fs::{File, OpenOptions};

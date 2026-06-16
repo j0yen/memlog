@@ -1,5 +1,9 @@
 # Changelog
 
+## v0.3.0 — 2026-06-16
+
+Adds cross-source contract test asserting driver/README/udev-rule all agree on the device mode octal; fails loudly when 0640 vs 0660 skew is present.
+
 ## v0.2.0 — 2026-05-29
 
 Add `memlog-witness` — a long-running userspace daemon that subscribes to
