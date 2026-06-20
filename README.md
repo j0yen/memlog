@@ -1,35 +1,24 @@
-# memlog — `/dev/memlog` for LLM context-compaction audit
+# memlog — `/dev/memlog`
 
-Kernel character-device + per-uid circular ring that captures
-"about-to-be-compacted" LLM context state so it survives process death.
-Per [PRD-memlog.md](../autobuilder/PRDs-archive/PRD-memlog.md) v0.1.
+A per-uid kernel ring buffer that captures an LLM agent's context right before it gets compacted, so the record survives the process that wrote it.
 
-Phases shipped:
-- **0**: char device + ring + atomic writes + `memlog show`
-- **1**: per-uid isolation, sysctl `kernel.memlog.ring_size`, uid filter ioctl
+## Why it exists
 
-Deferred:
-- **2**: perf tracepoint `memlog:record_written`, libmemlog (C/Rust/Python)
-- **3**: Anthropic SDK integration
-- **4**: `episode promote` from memlog tails
+When an agent compacts its context window, the state it drops is gone — and that lost state is often exactly what you want when something later goes wrong. Writing it to a file from userspace is fragile: the process that should write the audit record is the same one being torn down or compacted, so the write is the first thing to not happen.
 
-## Layout
+Putting the ring in the kernel breaks that dependency. The record lives in kernel memory, not the agent's, so it outlives the agent. A writer hands the kernel an opaque blob; the kernel stamps it with a sequence number, timestamp, and the writer's uid/pid, and keeps it in a fixed-size circular buffer where the oldest records evict first. Reading back is a separate concern from writing, on a separate lifecycle.
 
-```
-memlog/
-├── driver/                Kernel module (out-of-tree by default)
-│   ├── memlog.c
-│   ├── Kbuild
-│   └── Makefile
-├── include/uapi/linux/    UAPI header (mirror copy for the wintermute kernel)
-│   └── memlog.h
-├── cli/                   `memlog` userspace tool (Python, v0.1)
-│   └── memlog
-└── tests/
-    └── test_basic.sh      Functional smoke test
-```
+## What's here
 
-## Build (out-of-tree)
+Three pieces, three languages, one device contract:
+
+- **`driver/`** — the kernel character device (C). A per-uid circular ring with atomic writes, sysctl-tunable capacity, and uid-filter / stats / clear ioctls.
+- **`libmemlog/`** — dependency-free Rust bindings (`libmemlog` crate). Open the device, write a blob, parse `<header><blob>` records back out. Mirrors the UAPI header exactly and compiles + unit-tests without the device present.
+- **`cli/`** — `memlog` (a Python tool: `show` / `tail` / `stats` / `clear` / `write`) and `memlog-witness` (a Rust daemon that drains the device into per-session snapshot files under `~/.claude/memlog/<session-id>/`).
+
+The on-the-wire contract is one file, [`include/uapi/linux/memlog.h`](include/uapi/linux/memlog.h): a 56-byte packed record header (magic `MLOG`, schema version, length, kernel-issued timestamp and sequence number, uid, pid, 16-byte session id) followed by an opaque CBOR blob of up to 64 KB. The kernel never inspects the blob.
+
+## Build the driver (out-of-tree)
 
 ```sh
 cd driver
@@ -37,17 +26,19 @@ make                                   # against /lib/modules/$(uname -r)/build
 sudo make modules_install              # installs memlog.ko
 sudo depmod -a
 sudo groupadd -f memlog
-sudo usermod -aG memlog "$USER"        # log out / back in
+sudo usermod -aG memlog "$USER"        # log out / back in for group to take effect
 sudo modprobe memlog memlog_gid=$(getent group memlog | cut -d: -f3)
 ```
 
-Then create the device node — udev rule (`/etc/udev/rules.d/99-memlog.rules`):
+Create the device node with a udev rule (`/etc/udev/rules.d/99-memlog.rules`):
 
 ```udev
 KERNEL=="memlog", GROUP="memlog", MODE="0660"
 ```
 
-## Run
+Default ring capacity is 4 MB; the range is 64 KB to 256 MB.
+
+## Use it
 
 ```sh
 cli/memlog stats
@@ -56,30 +47,39 @@ cli/memlog show --limit 5
 cli/memlog show --format json | jq .
 ```
 
-## Configure
+Resize the ring at runtime:
 
 ```sh
-# Resize the ring (bytes, min 64 KB, max 256 MB)
 sudo sysctl kernel.memlog.ring_size=8388608
 ```
+
+Run the witness daemon to persist records past the ring's eviction window:
+
+```sh
+cargo build --release            # builds libmemlog + the memlog-witness binary
+./target/release/memlog-witness daemon     # drains to ~/.claude/memlog/<session-id>/
+./target/release/memlog-witness status
+```
+
+The witness writes each session's snapshots atomically (tmp → fsync → rename), trims per-session quota, and guards against a second instance with a file lock.
 
 ## Test
 
 ```sh
-bash tests/test_basic.sh
+bash tests/test_basic.sh         # functional smoke test (needs the device)
+cargo test                       # libmemlog unit + fixture-replay tests (no device needed)
 ```
 
-## What's in the wintermute kernel
+The Rust tests parse a recorded ring image from `tests/fixture/`, so they exercise framing without booting the driver. One test is a cross-source contract: it parses the device mode out of the driver, the README, and the udev rule, and fails loudly if they disagree.
 
-The driver is dropped into `drivers/char/memlog/` as part of the
-`linux-wintermute` package build. The UAPI header lands at
-`include/uapi/linux/memlog.h`. See `../wintermute-kernel/`.
+## Where it fits
 
-## Recent
+The driver is part of the `linux-wintermute` kernel build, dropped into `drivers/char/memlog/` with the UAPI header at `include/uapi/linux/memlog.h`. The witness daemon feeds the wintermute session-snapshot store. `libmemlog` degrades gracefully off that kernel: every device call returns an `io::Result`, so a binding built against a stock kernel compiles and runs, it just can't open the device.
 
-- **v0.2.0** (2026-05-29) — `memlog-witness` daemon added: long-running consumer that drains `/dev/memlog` into per-session snapshot files under `~/.claude/memlog/<session-id>/`. Includes atomic snap writes, quota trimming, `status` subcommand, `drain` subcommand, and single-instance flock guard. `libmemlog` gains `persistence.rs` and `lock.rs`.
+## Status
+
+The driver covers per-uid isolation, sysctl-tunable capacity, and the stats/clear/uid-filter ioctls. `libmemlog` (v0.3.0) and the `memlog-witness` daemon (added v0.2.0) are built and tested. A perf tracepoint (`memlog:record_written`) and AgentNS session-id binding are not yet implemented — the `session_id` field is carried through but only populated when a session id is available.
 
 ## License
 
-GPL-2.0-only (kernel module); MIT-OR-Apache-2.0 (userspace CLI and bindings,
-to be added in Phase 2).
+GPL-2.0-only for the kernel module; MIT or Apache-2.0 for the userspace crate and CLI.
