@@ -167,8 +167,7 @@ fn do_daemon_loop(out: &Path, device: &str, quota: u64) -> io::Result<()> {
 
     // Open the device/fixture file.
     let mut file = std::fs::File::open(device)?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)?;
+    let buf = libmemlog::read_all_records(&mut file)?;
 
     let records = parse_records(&buf);
     for rec in records {

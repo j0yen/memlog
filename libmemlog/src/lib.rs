@@ -152,10 +152,29 @@ impl Memlog {
     /// Read the ring contents and parse them into `<header><blob>` records.
     /// Stops at end-of-stream or the first mis-framed header.
     pub fn read_records(&mut self) -> io::Result<Vec<Record>> {
-        let mut buf = Vec::new();
-        self.file.read_to_end(&mut buf)?;
+        let buf = read_all_records(&mut self.file)?;
         Ok(parse_records(&buf))
     }
+}
+
+/// Read the whole ring using record-sized chunks.
+///
+/// The kernel returns exactly one record per `read(2)` and answers `EINVAL`
+/// when the caller's buffer is smaller than the next record, so `read_to_end`
+/// (which starts with a small probe read) cannot be used against the live
+/// device. Reads `HEADER_LEN + RECORD_MAX` per call until end-of-stream.
+pub fn read_all_records<R: io::Read>(src: &mut R) -> io::Result<Vec<u8>> {
+    let mut buf = Vec::new();
+    let mut chunk = vec![0u8; HEADER_LEN + RECORD_MAX];
+    loop {
+        match src.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(n) => buf.extend_from_slice(&chunk[..n]),
+            Err(e) if e.kind() == io::ErrorKind::Interrupted => continue,
+            Err(e) => return Err(e),
+        }
+    }
+    Ok(buf)
 }
 
 /// Parse a buffer of concatenated `<header><blob>` tuples into [`Record`]s.
